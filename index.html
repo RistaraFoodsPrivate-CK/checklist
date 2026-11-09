@@ -89,7 +89,7 @@ function RV(u,d){var x=(REV[u]||{})[d],r=(u===cur&&cur!=="admin")?rec:RECS[u],s=
 function canPast(d,s){var x=(REV[cur]||{})[d];return !!(x&&x.unl&&x.at>((s&&s.sv)||""))}
 function revSet(u,d,v){REV[u]=REV[u]||{};REV[u][d]=v;var o={};o[d]=v;return FB.merge("rev/"+u,{d:o})}
 function saveStaff(s){var d=clean(s);delete d.id;return FB.set("staff/"+s.id,d).catch(function(e){alert("Could not save: "+(e.code||e.message))})}
-function makeLogin(id,pin){return FB.loginInfo(id).then(function(li){var n=(li&&li.n||0)+1,em=id+(n>1?"."+n:"")+"@ops-checklist.app";return FB.createUser(em,pin+"@ck").then(function(uid){return FB.set("logins/"+id,{email:em,n:n}).then(function(){return uid})})})}
+function makeLogin(id,pin){return FB.loginInfo(id).then(function(li){var n=(li&&li.n||0);function tr(){n++;var em=id+(n>1?"."+n:"")+"@ops-checklist.app";return FB.createUser(em,pin+"@ck").then(function(uid){return FB.set("logins/"+id,{email:em,n:n}).then(function(){return uid})},function(e){if(e&&e.code==="auth/email-already-in-use"&&n<30)return tr();throw e})}return tr()})}
 function login(){var u=document.getElementById("u").value.trim().toLowerCase(),p=document.getElementById("pw").value,er=document.getElementById("err");er.textContent="";if(!u||!p){er.textContent="Enter username and PIN";return}
  var go=(u===ADMIN_ID||u===ADMIN_EMAIL)?FB.signIn(ADMIN_EMAIL,p):FB.loginInfo(u).then(function(li){if(!li)throw{code:"nouser"};return FB.signIn(li.email,p+"@ck")});
  go.catch(function(e){er.textContent=(e.code==="auth/network-request-failed"||e.code==="unavailable")?"No internet connection":"Wrong username or PIN"})}
