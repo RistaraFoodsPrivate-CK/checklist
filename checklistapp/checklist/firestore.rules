@@ -1,0 +1,31 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null && request.auth.token.email == "zakariya@ristarafoods.com";
+    }
+    function isOwner(id) {
+      return request.auth != null &&
+        get(/databases/$(database)/documents/staff/$(id)).data.uid == request.auth.uid;
+    }
+    // login lookup: only holds the login email, no PIN
+    match /logins/{id} {
+      allow get: if true;
+      allow write: if isAdmin();
+    }
+    // staff profile + checklist points: admin edits, staff reads own
+    match /staff/{id} {
+      allow read: if isAdmin() || isOwner(id);
+      allow write: if isAdmin();
+    }
+    // daily records: staff read/write own, admin everything
+    match /rec/{id} {
+      allow read, write: if isAdmin() || isOwner(id);
+    }
+    // admin reviews: only admin can write, staff can read own
+    match /rev/{id} {
+      allow read: if isAdmin() || isOwner(id);
+      allow write: if isAdmin();
+    }
+  }
+}
