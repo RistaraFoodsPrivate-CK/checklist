@@ -49,6 +49,7 @@ th{text-transform:uppercase;font-size:10px;letter-spacing:.04em}tr:hover td{back
 .cal button{border-radius:12px;font-size:12px}.cal .td{outline:2px solid var(--g1)}.cal .wo{background:var(--wo);color:var(--wot);border-color:var(--wot)}.cal .wo:disabled{opacity:.7}
 .wd{padding:8px 0;flex:1}.wd.on{background:var(--wo);color:var(--wot);border-color:var(--wot)}
 .tr i{background:linear-gradient(180deg,var(--g2),var(--g1))}
+.dov{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:50;display:flex;align-items:center;justify-content:center;padding:16px}.dbx{background:var(--card);border-radius:16px;padding:18px;max-width:360px;width:100%;box-shadow:var(--sh)}.dm{font-size:14px;margin-bottom:10px}
 @media print{body{background:#fff;color:#000}body.pm .wrap>:not(#modal){display:none!important}body.pm #modal{position:static;background:none;display:block}body.pm #mp{max-height:none;overflow:visible;padding:0;background:#fff}.noprint,.yn{display:none!important}.pr{display:inline!important;font-weight:700}.pr.no{color:#b91c1c}.it{break-inside:avoid;border-bottom:1px solid #ccc}input{border:0!important;background:#fff!important;padding:0!important;color:#000}}
 </style><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#1c1c1e"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Checklist"><link rel="apple-touch-icon" href="apple-touch-icon.png"><link rel="icon" href="icon-192.png">
 </head><body><div class="wrap" id="wrap">
@@ -80,6 +81,13 @@ var today=ymd(new Date());
 function fd(s){var p=s.split("-");return new Date(+p[0],p[1]-1,+p[2]).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"})}
 function S(k,v){try{if(v===undefined){var r=localStorage.getItem(k);return r?JSON.parse(r):null}localStorage.setItem(k,JSON.stringify(v))}catch(e){return null}}
 function esc(t){return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;")}
+function dlg(msg,o){o=o||{};var b=document.getElementById("dlg");if(!b){b=document.createElement("div");b.id="dlg";document.body.appendChild(b)}
+ b.className="dov";b.innerHTML='<div class="dbx"><div class="dm">'+esc(msg).replace(/\n/g,"<br>")+'</div>'+(o.input?'<input type="text" id="dli">':'')+'<div class="row"><button id="dlc"'+(o.cancel?'':' style="display:none"')+'>Cancel</button><button class="p" id="dly">OK</button></div></div>';
+ document.getElementById("dly").onclick=function(){var v=o.input?document.getElementById("dli").value:true;b.className="hide";if(o.ok)o.ok(v)};
+ document.getElementById("dlc").onclick=function(){b.className="hide"}}
+window.alert=function(m){dlg(m)};
+function ask(m,ok){dlg(m,{cancel:1,ok:ok})}
+function askText(m,ok){dlg(m,{cancel:1,input:1,ok:ok})}
 function norm(x){x=x||{};x.days=x.days||{};x.pend=x.pend||[];x.done=x.done||[];return x}
 function clean(x){return JSON.parse(JSON.stringify(x==null?null:x))}
 var wq={days:{}},wt=null;
@@ -88,8 +96,7 @@ function flush(){clearTimeout(wt);wt=null;if(cur==="admin"||!rec)return Promise.
 function RV(u,d){var x=(REV[u]||{})[d],r=(u===cur&&cur!=="admin")?rec:RECS[u],s=r&&r.days&&r.days[d];return x&&(!s||!s.sv||x.at>s.sv)?x:null}
 function canPast(d,s){var x=(REV[cur]||{})[d];return !!(x&&x.unl&&x.at>((s&&s.sv)||""))}
 function routeRow(k){var o=DIR.filter(function(x){return x.id!==cur});if(!o.length)return"";return'<div class="pt noprint" style="margin-top:8px"><select id="rt'+k+'"><option value="">Route to…</option>'+o.map(function(x){return'<option value="'+esc(x.id)+'">'+esc(x.name)+(x.desig?' – '+esc(x.desig):'')+'</option>'}).join("")+'</select><button onclick="routeTask('+k+')">↪ Route</button></div>'}
-function routeTask(k){var s=document.getElementById("rt"+k),to=s&&s.value;if(!to){alert("Choose a person to route to");return}var p=rec.pend[k],o=DIR.find(function(x){return x.id===to}),nm2=o?o.name:to;if(!p||!confirm("Route this task to "+nm2+"?"))return;
- FB.set("inbox/"+to+"/items/"+cur+"_"+Date.now(),{by:cur,fromName:me.name,text:p.text,since:p.since,rem:p.rem||"",eta:p.eta||"",at:new Date().toISOString()}).then(function(){var i=rec.pend.indexOf(p);if(i>=0)rec.pend.splice(i,1);p.doneOn=today;p.routedTo=nm2;rec.done.push(p);put();renderUser()}).catch(function(e){alert("Could not route: "+(e.code||e.message))})}
+function routeTask(k){var s=document.getElementById("rt"+k),to=s&&s.value;if(!to){alert("Choose a person to route to");return}var p=rec.pend[k],o=DIR.find(function(x){return x.id===to}),nm2=o?o.name:to;if(!p)return;ask("Route this task to "+nm2+"?",function(){FB.set("inbox/"+to+"/items/"+cur+"_"+Date.now(),{by:cur,fromName:me.name,text:p.text,since:p.since,rem:p.rem||"",eta:p.eta||"",at:new Date().toISOString()}).then(function(){var i=rec.pend.indexOf(p);if(i>=0)rec.pend.splice(i,1);p.doneOn=today;p.routedTo=nm2;rec.done.push(p);put();renderUser()}).catch(function(e){alert("Could not route: "+(e.code||e.message))})})}
 function procInbox(){if(!rec||cur==="admin")return;var ks=Object.keys(INB);if(!ks.length)return;var dl=[];ks.forEach(function(k){if(!rec.pend.some(function(p){return p.rid===k})){var t=INB[k];rec.pend.push({text:t.text,since:t.since||today,rem:t.rem||"",eta:t.eta||"",from:t.fromName||"",rid:k})}dl.push(k)});
  flush().then(function(){dl.forEach(function(k){FB.del("inbox/"+cur+"/items/"+k).catch(function(){})})})}
 function syncDir(){return FB.set("meta/dir",{list:STAFF.map(function(s){return{id:s.id,name:s.name,desig:s.desig||""}})}).catch(function(){})}
@@ -144,7 +151,7 @@ function pf(k,f,el){rec.pend[k][f]=el.value;el.classList.toggle("bad",!el.value)
 function pdone(k){var p=rec.pend.splice(k,1)[0];p.doneOn=today;rec.done.push(p);put();renderUser()}
 
 /* ---------- MODAL ---------- */
-function openM(d){if(isWO(d)&&!(rec.days[d]&&rec.days[d].locked)){alert("Week off – no checklist for this day 🌴");return}md=d;av=null;dr=rec.days[d]?JSON.parse(JSON.stringify(rec.days[d])):{a:{},r:{},t:{},locked:false};if(!dr.pts||(!dr.locked&&!Object.keys(dr.a).length))dr.pts=(me.points||[]).slice();document.getElementById("modal").classList.remove("hide");mr()}
+function openM(d){if(isWO(d)&&!(rec.days[d]&&rec.days[d].locked)){alert(d===today?"Week off today – no checklist for this day":"Week off – no checklist for this day");return}md=d;av=null;dr=rec.days[d]?JSON.parse(JSON.stringify(rec.days[d])):{a:{},r:{},t:{},locked:false};if(!dr.pts||(!dr.locked&&!Object.keys(dr.a).length))dr.pts=(me.points||[]).slice();document.getElementById("modal").classList.remove("hide");mr()}
 function closeM(){document.getElementById("modal").classList.add("hide");av=null;if(cur==="admin")renderAdmin();else renderUser()}
 function mr(){var L=dr.pts||[],lk=!!av||!(md===today||canPast(md,dr)),done=0,h='<div style="display:flex;justify-content:space-between;gap:8px" class="noprint"><h1>'+fd(md)+'</h1><button onclick="closeM()">✕</button></div><h1 class="pr" style="display:none">'+esc(av?av.n:me.name)+' Checklist</h1><div class="mu" style="margin-bottom:8px"><span class="pr">'+fd(md)+' · </span>'+esc(av?av.n:me.name)+(dr.locked?' · saved '+new Date(dr.sv).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):'')+(dr.locked?'<div>'+rvTxt(RV(av?av.u:cur,md))+(RV(av?av.u:cur,md)&&RV(av?av.u:cur,md).note?' – '+esc(RV(av?av.u:cur,md).note):'')+'</div>':'')+'</div><div class="card">';
  L.forEach(function(t,i){var a=dr.a[i];if(a)done++;
@@ -208,7 +215,7 @@ function renderAdmin(){if(atab==="staff")return renderStaff();var A=all(),Y=0,N=
  h+='<div class="card"><h2>Submitted checklists</h2><div class="tw"><table><tr><th>Date</th><th>Staff</th><th>Designation</th><th>Yes</th><th>No</th><th>Review</th><th></th></tr>'+(recs.slice(0,40).map(function(x){return'<tr><td>'+x.d+'</td><td>'+esc(nm(x.u))+'</td><td>'+esc(dsg(x.u))+'</td><td>'+x.y+'</td><td>'+x.n+'</td><td>'+revCell(x)+'</td><td><button onclick="viewRec(\''+x.k+'\',\''+x.d+'\')">View</button> <button onclick="unlock(\''+x.k+'\',\''+x.d+'\')">Allow edit</button></td></tr>'}).join("")||'<tr><td colspan="6" class="mu">No submissions yet.</td></tr>')+'</table></div></div>';
  h+='<div class="cols"><div class="card"><b>Import checklists</b><p class="mu">JSON: {"username":["point"]} or CSV: username,point (replaces the points of that staff)</p><input type="file" accept=".json,.csv,.txt" onchange="doImport(this)"></div></div>';
  document.getElementById("view").innerHTML=h}
-function unlock(u,d){if(!confirm("Allow "+nm(u)+" to edit "+d+" again?"))return;revSet(u,d,{st:"",note:"",at:new Date().toISOString(),unl:true});renderAdmin()}
+function unlock(u,d){ask("Allow "+nm(u)+" to edit "+d+" again?",function(){revSet(u,d,{st:"",note:"",at:new Date().toISOString(),unl:true});renderAdmin()})}
 function doImport(el){var f=el.files[0];if(!f)return;var r=new FileReader();r.onload=function(){var t=r.result,o={};
  try{o=JSON.parse(t)}catch(e){t.split(/\r?\n/).forEach(function(l,i){var m=l.match(/^\s*"?([^",]+)"?\s*,\s*"?(.+?)"?\s*$/);if(m&&!(i===0&&/^role$/i.test(m[1]))){(o[m[1].trim()]=o[m[1].trim()]||[]).push(m[2])}})}
  if(!Object.keys(o).length){alert("Could not read file");return}
@@ -225,7 +232,7 @@ function renderStaff(){var ss=staff();if(!sel||!ss.some(function(x){return x.id=
  document.getElementById("view").innerHTML=h}
 function rvTxt(x){return !x||!x.st?"⏳ Awaiting review":x.st==="ok"?"✔ Approved":"↩ Sent back for correction"}
 function revCell(x){return(x.rv&&x.rv.st?(x.rv.st==="ok"?"✔ Approved":"↩ Sent back")+(x.rv.note?" – "+esc(x.rv.note):"")+" ":"⏳ ")+'<button onclick="rvw(\''+x.k+'\',\''+x.d+'\',\'ok\')">Approve</button> <button onclick="rvw(\''+x.k+'\',\''+x.d+'\',\'redo\')">Send back</button>'}
-function rvw(u,d,st){var note=prompt(st==="ok"?"Review note (optional)":"What needs to be corrected?","");if(note===null)return;revSet(u,d,{st:st,note:note.trim(),at:new Date().toISOString(),unl:st==="redo"});renderAdmin()}
+function rvw(u,d,st){askText(st==="ok"?"Review note (optional)":"What needs to be corrected?",function(note){revSet(u,d,{st:st,note:(note||"").trim(),at:new Date().toISOString(),unl:st==="redo"});renderAdmin()})}
 function viewRec(u,d){var r=RECS[u];if(!r||!r.days[d])return;av={n:nm(u),u:u};md=d;dr=JSON.parse(JSON.stringify(r.days[d]));document.getElementById("modal").classList.remove("hide");mr()}
 function togWO(i){mut(function(s){s.wo=s.wo||[];var k=s.wo.indexOf(i);if(k>=0)s.wo.splice(k,1);else s.wo.push(i)})}
 function mut(fn){var s=STAFF.find(function(x){return x.id===sel});if(s){fn(s,STAFF);saveStaff(s)}renderAdmin()}
@@ -238,8 +245,9 @@ function bulk(){var L=g("bk").split(/\r?\n/).map(function(x){return x.trim()}).f
 function editPt(i,v){mut(function(s){v=v.trim();if(v)s.points[i]=v;else s.points.splice(i,1)})}
 function mvPt(i,d){mut(function(s){var j=i+d,p=s.points;if(j>=0&&j<p.length){var t=p[i];p[i]=p[j];p[j]=t}})}
 function delPt(i){mut(function(s){s.points.splice(i,1)})}
-function cpPts(){var f=g("cp");mut(function(s,ss){var o=f==="__def"?{name:"Default",points:SAMPLE["Production Supervisor"]}:ss.find(function(x){return x.id===f});if(o&&confirm("Replace this checklist with "+o.name+"'s points?"))s.points=o.points.slice()})}
-function delStaff(){if(!confirm("Delete this staff member and their login? Past records stay saved."))return;var id=sel;FB.del("staff/"+id);FB.del("logins/"+id);var ds=STAFF.find(function(x){return x.id===id});if(ds&&ds.uid)FB.del("uids/"+ds.uid);STAFF=STAFF.filter(function(x){return x.id!==id});syncDir();sel=null;renderAdmin()}
+function cpPts(){var f=g("cp"),o=f==="__def"?{name:"Default",points:SAMPLE["Production Supervisor"]}:STAFF.find(function(x){return x.id===f});if(!o)return;ask("Replace this checklist with "+o.name+"'s points?",function(){mut(function(s){s.points=o.points.slice()})})}
+function delStaff(){ask("Delete this staff member and their login? Past records stay saved.",doDel)}
+function doDel(){var id=sel;FB.del("staff/"+id);FB.del("logins/"+id);var ds=STAFF.find(function(x){return x.id===id});if(ds&&ds.uid)FB.del("uids/"+ds.uid);STAFF=STAFF.filter(function(x){return x.id!==id});syncDir();sel=null;renderAdmin()}
 FB.onUser(onUser);
 </script></div><script>if("serviceWorker"in navigator&&location.protocol.indexOf("http")===0){navigator.serviceWorker.register("sw.js").catch(function(){})}</script>
 </body></html>
