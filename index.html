@@ -71,7 +71,7 @@ th{text-transform:uppercase;font-size:10px;letter-spacing:.04em}tr:hover td{back
 
 <script src="fb.js"></script>
 <script>
-var ADMIN_ID="zakariya",ADMIN_EMAIL="zakariya@ristarafoods.com",STAFF=[],RECS={},REV={},UNS=[];function staff(){return STAFF}function nm(u){var s=staff().find(function(x){return x.id===u});return s?s.name:u}function dsg(u){var s=staff().find(function(x){return x.id===u});return s?s.desig:"demo"}function isWO(ds,s){s=s||me;var p=ds.split("-");return !!(s&&s.wo&&s.wo.indexOf(new Date(+p[0],p[1]-1,+p[2]).getDay())>=0)}function slug(t){return String(t).trim().toLowerCase().replace(/[^a-z0-9]+/g,"")}function g(i){return document.getElementById(i).value}
+var ADMIN_ID="zakariya",ADMIN_EMAIL="zakariya@ristarafoods.com",STAFF=[],RECS={},REV={},UNS=[],DIR=[],INB={},synced=false;function staff(){return STAFF}function nm(u){var s=staff().find(function(x){return x.id===u});return s?s.name:u}function dsg(u){var s=staff().find(function(x){return x.id===u});return s?s.desig:"demo"}function isWO(ds,s){s=s||me;var p=ds.split("-");return !!(s&&s.wo&&s.wo.indexOf(new Date(+p[0],p[1]-1,+p[2]).getDay())>=0)}function slug(t){return String(t).trim().toLowerCase().replace(/[^a-z0-9]+/g,"")}function g(i){return document.getElementById(i).value}
 var SAMPLE={"Production Supervisor":[
 "Attendance taken and staff assigned to stations","Shift handover notes reviewed","Personal hygiene check: gloves, caps, aprons, no jewellery","Hand wash and sanitizer station stocked","Production plan and targets confirmed for the day","Raw peanut stock checked against plan","Raw material quality checked (moisture, foreign matter, damage)","Roaster temperature and timer set per SOP","Roasting batch logged: weight in, weight out","Grinding machine cleaned and ready before start","Metal detector / magnet checked and working","Weighing scales calibrated and verified","Packing material and labels (batch no., date) verified","Line clearance done before product changeover","In-process quality sample checked and recorded","Yield recorded for each batch","Machine abnormalities or breakdowns reported","Waste and rejects weighed and logged","Cleaning done after production, floor and equipment","Finished goods counted and handed to store; end-of-day report submitted"]};
 var cur,role,rec,tab="cal",vm=new Date(),md,dr,me,atab="dash",sel=null,av=null;
@@ -87,31 +87,39 @@ function put(d,o){if(d)wq.days[d]=o;clearTimeout(wt);wt=setTimeout(flush,500)}
 function flush(){clearTimeout(wt);wt=null;if(cur==="admin"||!rec)return Promise.resolve();var pr=[];for(var d in wq.days)pr.push([["days",d],clean(wq.days[d])]);pr.push([["pend"],clean(rec.pend)],[["done"],clean(rec.done)]);wq={days:{}};return FB.upd("rec/"+cur,pr).catch(function(e){console.log(e);alert("Could not save. Check internet and try again.")})}
 function RV(u,d){var x=(REV[u]||{})[d],r=(u===cur&&cur!=="admin")?rec:RECS[u],s=r&&r.days&&r.days[d];return x&&(!s||!s.sv||x.at>s.sv)?x:null}
 function canPast(d,s){var x=(REV[cur]||{})[d];return !!(x&&x.unl&&x.at>((s&&s.sv)||""))}
+function routeRow(k){var o=DIR.filter(function(x){return x.id!==cur});if(!o.length)return"";return'<div class="pt noprint" style="margin-top:8px"><select id="rt'+k+'"><option value="">Route to…</option>'+o.map(function(x){return'<option value="'+esc(x.id)+'">'+esc(x.name)+(x.desig?' – '+esc(x.desig):'')+'</option>'}).join("")+'</select><button onclick="routeTask('+k+')">↪ Route</button></div>'}
+function routeTask(k){var s=document.getElementById("rt"+k),to=s&&s.value;if(!to){alert("Choose a person to route to");return}var p=rec.pend[k],o=DIR.find(function(x){return x.id===to}),nm2=o?o.name:to;if(!p||!confirm("Route this task to "+nm2+"?"))return;
+ FB.set("inbox/"+to+"/items/"+cur+"_"+Date.now(),{by:cur,fromName:me.name,text:p.text,since:p.since,rem:p.rem||"",eta:p.eta||"",at:new Date().toISOString()}).then(function(){var i=rec.pend.indexOf(p);if(i>=0)rec.pend.splice(i,1);p.doneOn=today;p.routedTo=nm2;rec.done.push(p);put();renderUser()}).catch(function(e){alert("Could not route: "+(e.code||e.message))})}
+function procInbox(){if(!rec||cur==="admin")return;var ks=Object.keys(INB);if(!ks.length)return;var dl=[];ks.forEach(function(k){if(!rec.pend.some(function(p){return p.rid===k})){var t=INB[k];rec.pend.push({text:t.text,since:t.since||today,rem:t.rem||"",eta:t.eta||"",from:t.fromName||"",rid:k})}dl.push(k)});
+ flush().then(function(){dl.forEach(function(k){FB.del("inbox/"+cur+"/items/"+k).catch(function(){})})})}
+function syncDir(){return FB.set("meta/dir",{list:STAFF.map(function(s){return{id:s.id,name:s.name,desig:s.desig||""}})}).catch(function(){})}
 function revSet(u,d,v){REV[u]=REV[u]||{};REV[u][d]=v;var o={};o[d]=v;return FB.merge("rev/"+u,{d:o})}
-function saveStaff(s){var d=clean(s);delete d.id;return FB.set("staff/"+s.id,d).catch(function(e){alert("Could not save: "+(e.code||e.message))})}
+function saveStaff(s){var d=clean(s);delete d.id;return FB.set("staff/"+s.id,d).then(syncDir).catch(function(e){alert("Could not save: "+(e.code||e.message))})}
 function makeLogin(id,pin){return FB.loginInfo(id).then(function(li){var n=(li&&li.n||0);function tr(){n++;var em=id+(n>1?"."+n:"")+"@ops-checklist.app";return FB.createUser(em,pin+"@ck").then(function(uid){return FB.set("logins/"+id,{email:em,n:n}).then(function(){return uid})},function(e){if(e&&e.code==="auth/email-already-in-use"&&n<30)return tr();throw e})}return tr()})}
 function login(){var u=document.getElementById("u").value.trim().toLowerCase(),p=document.getElementById("pw").value,er=document.getElementById("err");er.textContent="";if(!u||!p){er.textContent="Enter username and PIN";return}
- var go=(u===ADMIN_ID||u===ADMIN_EMAIL)?FB.signIn(ADMIN_EMAIL,p):FB.loginInfo(u).then(function(li){if(!li)throw{code:"nouser"};return FB.signIn(li.email,p+"@ck")});
- go.catch(function(e){er.textContent=(e.code==="auth/network-request-failed"||e.code==="unavailable")?"No internet connection":"Wrong username or PIN"})}
-function logout(){FB.signOut().then(function(){location.reload()})}
+ try{sessionStorage.setItem("ck_ok","1")}catch(e){}var go=(u===ADMIN_ID||u===ADMIN_EMAIL)?FB.signIn(ADMIN_EMAIL,p):FB.loginInfo(u).then(function(li){if(!li)throw{code:"nouser"};return FB.signIn(li.email,p+"@ck")});
+ go.catch(function(e){try{sessionStorage.removeItem("ck_ok")}catch(x){}er.textContent=(e.code==="auth/network-request-failed"||e.code==="unavailable")?"No internet connection":"Wrong username or PIN"})}
+function logout(){try{sessionStorage.removeItem("ck_ok")}catch(e){}FB.signOut().then(function(){location.reload()})}
 function stopAll(){UNS.forEach(function(f){f()});UNS=[]}
-function onUser(u){stopAll();if(!u){document.getElementById("app").classList.add("hide");document.getElementById("login").classList.remove("hide");return}
+function onUser(u){stopAll();if(u){var okk=true;try{okk=sessionStorage.getItem("ck_ok")==="1"}catch(e){}if(!okk){FB.signOut();return}}if(!u){document.getElementById("app").classList.add("hide");document.getElementById("login").classList.remove("hide");return}
  document.getElementById("login").classList.add("hide");
  if(u.email===ADMIN_EMAIL){cur="admin";startAdmin()}else{cur=u.email.split("@")[0].split(".")[0];startStaff()}}
 function busy(){var a=document.activeElement;return !!(a&&/INPUT|TEXTAREA|SELECT/.test(a.tagName))}
 function mhid(){return document.getElementById("modal").classList.contains("hide")}
-function startAdmin(){me={name:"Zakariya"};document.getElementById("app").classList.remove("hide");document.getElementById("wrap").classList.add("adm");
+function startAdmin(){synced=false;me={name:"Zakariya"};document.getElementById("app").classList.remove("hide");document.getElementById("wrap").classList.add("adm");
  document.getElementById("title").textContent="Admin Dashboard";document.getElementById("who").textContent="Zakariya · "+fd(today);
  document.getElementById("view").innerHTML='<div class="card mu">Loading…</div>';
  function rr(){if(cur==="admin"&&!busy()&&mhid())renderAdmin()}
- UNS.push(FB.listenCol("staff",function(m){STAFF=Object.keys(m).map(function(k){var s=m[k];s.id=k;s.points=s.points||[];s.wo=s.wo||[];return s}).sort(function(a,b){return a.name.localeCompare(b.name)});rr()}));
+ UNS.push(FB.listenCol("staff",function(m){STAFF=Object.keys(m).map(function(k){var s=m[k];s.id=k;s.points=s.points||[];s.wo=s.wo||[];return s}).sort(function(a,b){return a.name.localeCompare(b.name)});if(!synced){synced=true;STAFF.forEach(function(s){if(s.uid)FB.set("uids/"+s.uid,{id:s.id}).catch(function(){})});syncDir()}rr()}));
  UNS.push(FB.listenCol("rec",function(m){RECS={};for(var k in m)RECS[k]=norm(m[k]);rr()}));
  UNS.push(FB.listenCol("rev",function(m){REV={};for(var k in m)REV[k]=m[k].d||{};rr()}))}
 function startStaff(){var rdy={s:0,r:0,v:0},shown=false;
- function go(k,quiet){rdy[k]=1;if(!(rdy.s&&rdy.r&&rdy.v))return;if(!shown){shown=true;document.getElementById("app").classList.remove("hide");document.getElementById("title").textContent=me.name;document.getElementById("who").textContent=(me.desig?me.desig+" · ":"")+fd(today);renderUser();return}if(!quiet&&!busy()&&mhid())renderUser()}
+ function go(k,quiet){rdy[k]=1;if(!(rdy.s&&rdy.r&&rdy.v))return;if(!shown){shown=true;procInbox();document.getElementById("app").classList.remove("hide");document.getElementById("title").textContent=me.name;document.getElementById("who").textContent=(me.desig?me.desig+" · ":"")+fd(today);renderUser();return}if(!quiet&&!busy()&&mhid())renderUser()}
  UNS.push(FB.listen("staff/"+cur,function(d){if(d===null){alert("Your account was removed. Contact admin.");FB.signOut();return}if(!d)return;me=d;me.id=cur;me.points=me.points||[];me.wo=me.wo||[];go("s")}));
  UNS.push(FB.listen("rec/"+cur,function(d,pw){if(d===null){rec=norm();FB.set("rec/"+cur,rec);go("r");return}if(d===undefined)return;if(!rec||(!pw&&!wt))rec=norm(d);go("r",pw)}));
- UNS.push(FB.listen("rev/"+cur,function(d){if(d===undefined)return;REV[cur]=(d&&d.d)||{};go("v")}))}
+ UNS.push(FB.listen("rev/"+cur,function(d){if(d===undefined)return;REV[cur]=(d&&d.d)||{};go("v")}));
+ UNS.push(FB.listen("meta/dir",function(d){if(d===undefined)return;DIR=(d&&d.list)||[]}));
+ UNS.push(FB.listenCol("inbox/"+cur+"/items",function(m){INB=m;procInbox();if(rec&&!busy()&&mhid())renderUser()}))}
 
 /* ---------- USER ---------- */
 function ovd(e){return e&&new Date(e)<new Date()}
@@ -126,10 +134,10 @@ function renderUser(){
    if(r&&r.locked){c=Object.keys(r.a).some(function(k){return r.a[k]==="N"})?"wn":"ok"}else if(r)c="dr";if(isWO(ds)&&!(r&&r.locked))c+=" wo";if(ds===today)c+=" td";
    h+='<button class="'+c+'" '+(ds>today?"disabled":"")+' onclick="openM(\''+ds+'\')">'+d+'</button>'}
   h+='</div><div class="lg"><span><i style="background:var(--ok)"></i> Saved – all Yes</span><span><i style="background:var(--wn)"></i> Saved – has No</span><span><i style="border-style:dashed"></i> Draft</span><span><i style="background:var(--wo)"></i> Week off</span></div><p class="mu">Tap a date to open that day\'s checklist.</p></div>'}
- else if(tab==="saved"){var ks=Object.keys(rec.days).filter(function(d){return rec.days[d].locked}).sort().reverse();if(!ks.length)h+='<div class="card mu">No saved checklists yet.</div>';ks.forEach(function(d){var s=rec.days[d],y=0,n=0;Object.keys(s.a).forEach(function(i){if(s.a[i]==="Y")y++;else n++});h+='<div class="card"><div style="display:flex;justify-content:space-between;gap:8px"><b>'+fd(d)+'</b><span class="mu">'+rvTxt(RV(cur,d))+'</span></div><div class="mu">Yes '+y+' · No '+n+(RV(cur,d)&&RV(cur,d).note?' · “'+esc(RV(cur,d).note)+'”':'')+'</div><div class="row"><button class="p" onclick="openM(\''+d+'\')">'+(d===today||canPast(d,s)?"Open / Edit":"Open")+'</button><button onclick="openM(\''+d+'\');setTimeout(pdfM,200)">⬇ PDF</button></div></div>'})}else{rec.pend.sort(function(a,b){return(ovd(b.eta)?1:0)-(ovd(a.eta)?1:0)||a.since.localeCompare(b.since)});
+ else if(tab==="saved"){var ks=Object.keys(rec.days).filter(function(d){return rec.days[d].locked}).sort().reverse();if(!ks.length)h+='<div class="card mu">No saved checklists yet.</div>';ks.forEach(function(d){var s=rec.days[d],y=0,n=0;Object.keys(s.a).forEach(function(i){if(s.a[i]==="Y")y++;else n++});h+='<div class="card"><div style="display:flex;justify-content:space-between;gap:8px"><b>'+fd(d)+'</b><span class="mu">'+rvTxt(RV(cur,d))+'</span></div><div class="mu">Yes '+y+' · No '+n+(RV(cur,d)&&RV(cur,d).note?' · “'+esc(RV(cur,d).note)+'”':'')+'</div><div class="row"><button class="p" onclick="openM(\''+d+'\')">'+(d===today||canPast(d,s)?"Open / Edit":"Open")+'</button><button onclick="openM(\''+d+'\');setTimeout(pdfM,200)">⬇ PDF</button><button onclick="sharePdf(\''+d+'\',rec.days[\''+d+'\'],me.name)">📤 Share</button></div></div>'})}else{rec.pend.sort(function(a,b){return(ovd(b.eta)?1:0)-(ovd(a.eta)?1:0)||a.since.localeCompare(b.since)});
   if(!np)h+='<div class="card"><b>🎉 Nothing pending.</b><div class="mu">Points marked “No” will show here until you finish them.</div></div>';
-  rec.pend.forEach(function(p,k){h+='<div class="card pend"><b>'+esc(p.text)+'</b><div class="lb">Pending since '+fd(p.since)+(ovd(p.eta)?' <span class="od">OVERDUE</span>':'')+'</div><div class="ex"><div class="lb">Remarks</div><input type="text" class="'+(p.rem?'':'bad')+'" value="'+esc(p.rem)+'" oninput="pf('+k+',\'rem\',this)"><div class="lb">Will finish by (date &amp; time)</div><input type="datetime-local" class="'+(p.eta?'':'bad')+'" value="'+esc(p.eta)+'" oninput="pf('+k+',\'eta\',this)"></div><div class="yn"><button class="y on" onclick="pdone('+k+')">✔ Done now</button></div></div>'});
-  if(rec.done.length)h+='<div class="card"><h2>Recently cleared</h2>'+rec.done.slice(-5).reverse().map(function(p){return'<div class="it mu">✔ '+esc(p.text)+' · cleared '+fd(p.doneOn)+'</div>'}).join("")+'</div>'}
+  rec.pend.forEach(function(p,k){h+='<div class="card pend"><b>'+esc(p.text)+'</b><div class="lb">Pending since '+fd(p.since)+(ovd(p.eta)?' <span class="od">OVERDUE</span>':'')+(p.from?' · ↪ from <b>'+esc(p.from)+'</b>':'')+'</div><div class="ex"><div class="lb">Remarks</div><input type="text" class="'+(p.rem?'':'bad')+'" value="'+esc(p.rem)+'" oninput="pf('+k+',\'rem\',this)"><div class="lb">Will finish by (date &amp; time)</div><input type="datetime-local" class="'+(p.eta?'':'bad')+'" value="'+esc(p.eta)+'" oninput="pf('+k+',\'eta\',this)"></div><div class="yn"><button class="y on" onclick="pdone('+k+')">✔ Done now</button></div>'+routeRow(k)+'</div>'});
+  if(rec.done.length)h+='<div class="card"><h2>Recently cleared</h2>'+rec.done.slice(-5).reverse().map(function(p){return'<div class="it mu">✔ '+esc(p.text)+(p.routedTo?' · ↪ routed to '+esc(p.routedTo):'')+' · cleared '+fd(p.doneOn)+'</div>'}).join("")+'</div>'}
  document.getElementById("view").innerHTML=h}
 function mv(d){vm=new Date(vm.getFullYear(),vm.getMonth()+d,1);renderUser()}
 function pf(k,f,el){rec.pend[k][f]=el.value;el.classList.toggle("bad",!el.value);put()}
@@ -144,7 +152,7 @@ function mr(){var L=dr.pts||[],lk=!!av||!(md===today||canPast(md,dr)),done=0,h='
   if(!lk)h+='<div class="yn"><button class="y'+(a==="Y"?" on":"")+'" onclick="ans('+i+',\'Y\')">Yes</button><button class="x'+(a==="N"?" on":"")+'" onclick="ans('+i+',\'N\')">No</button></div>';
   if(a==="N")h+='<div class="ex"><div class="lb">Reason / remarks'+(lk?'':' (required)')+'</div><input type="text" '+(lk?'readonly':'')+' class="'+(dr.r[i]?'':'bad')+'" value="'+esc(dr.r[i])+'" oninput="tf('+i+',\'r\',this)"><div class="lb">Will finish by'+(lk?'':' (required)')+'</div><input type="datetime-local" '+(lk?'readonly':'')+' class="'+(dr.t[i]?'':'bad')+'" value="'+esc(dr.t[i])+'" oninput="tf('+i+',\'t\',this)"></div>';
   h+='</div>'});
- h+='</div><div class="mu noprint">'+done+' of '+L.length+' answered</div><div class="row noprint">'+(lk?'<div class="mu" style="align-self:center">🔒 Read-only (past day or view).</div>':'<button class="p" onclick="save()">'+(dr.locked?"Save changes":"Save")+'</button>')+'<button onclick="pdfM()">Download PDF</button></div>';
+ h+='</div><div class="mu noprint">'+done+' of '+L.length+' answered</div><div class="row noprint">'+(lk?'<div class="mu" style="align-self:center">🔒 Read-only (past day or view).</div>':'<button class="p" onclick="save()">'+(dr.locked?"Save changes":"Save")+'</button>')+'<button onclick="pdfM()">Download PDF</button><button onclick="sharePdf(md,dr,av?av.n:me.name)">📤 Share (WhatsApp)</button></div>';
  document.getElementById("mp").innerHTML=h}
 function ans(i,v){dr.a[i]=v;if(v==="Y"){delete dr.r[i];delete dr.t[i]}if(!dr.locked){rec.days[md]=dr;put(md,dr)}mr()}
 function tf(i,f,el){dr[f][i]=el.value;el.classList.toggle("bad",!el.value);if(!dr.locked){rec.days[md]=dr;put(md,dr)}}
@@ -156,6 +164,27 @@ function save(){var L=dr.pts||[],u=0,m=0;L.forEach(function(t,i){if(!dr.a[i])u++
   if(dr.a[i]==="N"){if(k<0)rec.pend.push({text:t,since:md,rem:dr.r[i],eta:dr.t[i]});else if(rec.pend[k].since===md){rec.pend[k].rem=dr.r[i];rec.pend[k].eta=dr.t[i]}}
   else if(k>=0&&rec.pend[k].since===md)rec.pend.splice(k,1)});
  put(md,dr);flush();tab="cal";closeM()}
+function pdfBytes(lines){var W=595,H=842,M=40,LH=14,per=Math.floor((H-2*M)/LH),rows=[];
+ function cl(s){return String(s==null?"":s).replace(/[\u2018\u2019]/g,"'").replace(/[\u201c\u201d]/g,'"').replace(/[\u2013\u2014]/g,"-").replace(/[^\x20-\x7e]/g,"?")}
+ lines.forEach(function(l){var fs=l.s||10,mc=Math.floor((W-2*M-(l.i||0)*12)/(fs*0.55)),ws=cl(l.t).split(" "),c="";
+  function ps(t){rows.push({t:t,b:l.b,s:fs,i:l.i})}
+  ws.forEach(function(w){while(w.length>mc){if(c){ps(c);c=""}ps(w.slice(0,mc));w=w.slice(mc)}if((c+" "+w).trim().length>mc){ps(c);c=w}else c=(c+" "+w).trim()});ps(c)});
+ var pages=[];for(var i=0;i<rows.length;i+=per)pages.push(rows.slice(i,i+per));
+ var objs=[],kids=[];objs[1]="<< /Type /Catalog /Pages 2 0 R >>";
+ objs[3]="<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>";objs[4]="<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>";
+ pages.forEach(function(pg,pi){var po=5+pi*2,co=po+1,s="";pg.forEach(function(r,ri){s+="BT /"+(r.b?"F2":"F1")+" "+r.s+" Tf 1 0 0 1 "+(M+(r.i||0)*12)+" "+(H-M-ri*LH)+" Tm ("+r.t.replace(/\\/g,"\\\\").replace(/\(/g,"\\(").replace(/\)/g,"\\)")+") Tj ET\n"});
+  objs[po]="<< /Type /Page /Parent 2 0 R /MediaBox [0 0 "+W+" "+H+"] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents "+co+" 0 R >>";objs[co]="<< /Length "+s.length+" >>\nstream\n"+s+"endstream";kids.push(po+" 0 R")});
+ objs[2]="<< /Type /Pages /Kids ["+kids.join(" ")+"] /Count "+pages.length+" >>";
+ var pdf="%PDF-1.4\n",off=[],n;for(n=1;n<objs.length;n++){off[n]=pdf.length;pdf+=n+" 0 obj\n"+objs[n]+"\nendobj\n"}
+ var xr=pdf.length;pdf+="xref\n0 "+objs.length+"\n0000000000 65535 f \n";for(n=1;n<objs.length;n++)pdf+=("0000000000"+off[n]).slice(-10)+" 00000 n \n";
+ pdf+="trailer\n<< /Size "+objs.length+" /Root 1 0 R >>\nstartxref\n"+xr+"\n%%EOF";
+ var b=new Uint8Array(pdf.length);for(n=0;n<pdf.length;n++)b[n]=pdf.charCodeAt(n)&255;return b}
+function sharePdf(d,s,who){if(!s||!s.pts){alert("Nothing to share");return}var u=av?av.u:cur,x=RV(u,d),y=0,n=0,L=[{t:who+" - Checklist",b:1,s:14},{t:"Date: "+fd(d)+(s.sv?"   Saved: "+new Date(s.sv).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):""),s:10},{t:"Review: "+rvTxt(x).replace(/^[^A-Za-z]+/,"")+(x&&x.note?" - "+x.note:""),s:10},{t:" ",s:10}];
+ s.pts.forEach(function(t,i){var a=s.a[i];if(a==="Y")y++;if(a==="N")n++;L.push({t:(i+1)+". "+t,s:10});L.push({t:a==="Y"?"YES":a==="N"?"NO":"-",b:1,s:10,i:1});if(a==="N"){L.push({t:"Reason: "+(s.r[i]||""),s:10,i:1});L.push({t:"Will finish by: "+String(s.t[i]||"").replace("T"," "),s:10,i:1})}});
+ L.splice(3,0,{t:"Yes: "+y+"   No: "+n,b:1,s:10});
+ var b=pdfBytes(L),name=(who+"-checklist-"+d).replace(/[^A-Za-z0-9-]+/g,"-")+".pdf",f=null;try{f=new File([b],name,{type:"application/pdf"})}catch(e){}
+ if(f&&navigator.canShare&&navigator.canShare({files:[f]})){navigator.share({files:[f],title:who+" checklist "+d}).catch(function(){})}
+ else{var a2=document.createElement("a");a2.href=URL.createObjectURL(new Blob([b],{type:"application/pdf"}));a2.download=name;document.body.appendChild(a2);a2.click();setTimeout(function(){a2.remove()},500);alert("PDF downloaded. Attach it in WhatsApp.")}}
 function pdfM(){document.body.classList.add("pm");window.print();setTimeout(function(){document.body.classList.remove("pm")},500)}
 
 /* ---------- ADMIN ---------- */
@@ -174,7 +203,7 @@ function renderAdmin(){if(atab==="staff")return renderStaff();var A=all(),Y=0,N=
  h+='<div class="card"><h2>Most missed points</h2>'+(mm.length?mm.map(function(t){return'<div class="it" style="padding:8px 0;display:flex;justify-content:space-between;gap:8px"><span>'+esc(t)+'</span><b>'+miss[t]+'×</b></div>'}).join(""):'<div class="mu">No data yet</div>')+'</div></div>';
  h+='<div class="cols"><div class="card"><h2>By staff</h2><div class="tw"><table><tr><th>Staff</th><th>Submitted</th><th>Yes %</th><th>No</th><th>Pending</th></tr>'+Object.keys(byR).map(function(r){var b=byR[r];return'<tr><td>'+esc(nm(r))+'</td><td>'+b.s+'</td><td>'+(b.y+b.n?Math.round(b.y/(b.y+b.n)*100):0)+'%</td><td>'+b.n+'</td><td>'+b.p+'</td></tr>'}).join("")+'</table></div></div>';
  pl.sort(function(a,b){return(ovd(b.p.eta)?1:0)-(ovd(a.p.eta)?1:0)||a.p.since.localeCompare(b.p.since)});
- h+='<div class="card"><h2>Pending tasks (all staff)</h2><div class="tw"><table><tr><th>Staff</th><th>Task</th><th>Since</th><th>Finish by</th></tr>'+(pl.map(function(x){return'<tr><td>'+esc(nm(x.u))+'</td><td style="white-space:normal;min-width:180px">'+esc(x.p.text)+'<div class="lb">'+esc(x.p.rem)+'</div></td><td>'+x.p.since+'</td><td>'+(x.p.eta?esc(x.p.eta.replace("T"," ")):'–')+(ovd(x.p.eta)?' <span class="od">OVERDUE</span>':'')+'</td></tr>'}).join("")||'<tr><td colspan="4" class="mu">None</td></tr>')+'</table></div></div></div>';
+ h+='<div class="card"><h2>Pending tasks (all staff)</h2><div class="tw"><table><tr><th>Staff</th><th>Task</th><th>Since</th><th>Finish by</th></tr>'+(pl.map(function(x){return'<tr><td>'+esc(nm(x.u))+'</td><td style="white-space:normal;min-width:180px">'+esc(x.p.text)+(x.p.from?' <span class="lb">↪ from '+esc(x.p.from)+'</span>':'')+'<div class="lb">'+esc(x.p.rem)+'</div></td><td>'+x.p.since+'</td><td>'+(x.p.eta?esc(x.p.eta.replace("T"," ")):'–')+(ovd(x.p.eta)?' <span class="od">OVERDUE</span>':'')+'</td></tr>'}).join("")||'<tr><td colspan="4" class="mu">None</td></tr>')+'</table></div></div></div>';
  recs.sort(function(a,b){return b.d.localeCompare(a.d)});
  h+='<div class="card"><h2>Submitted checklists</h2><div class="tw"><table><tr><th>Date</th><th>Staff</th><th>Designation</th><th>Yes</th><th>No</th><th>Review</th><th></th></tr>'+(recs.slice(0,40).map(function(x){return'<tr><td>'+x.d+'</td><td>'+esc(nm(x.u))+'</td><td>'+esc(dsg(x.u))+'</td><td>'+x.y+'</td><td>'+x.n+'</td><td>'+revCell(x)+'</td><td><button onclick="viewRec(\''+x.k+'\',\''+x.d+'\')">View</button> <button onclick="unlock(\''+x.k+'\',\''+x.d+'\')">Allow edit</button></td></tr>'}).join("")||'<tr><td colspan="6" class="mu">No submissions yet.</td></tr>')+'</table></div></div>';
  h+='<div class="cols"><div class="card"><b>Import checklists</b><p class="mu">JSON: {"username":["point"]} or CSV: username,point (replaces the points of that staff)</p><input type="file" accept=".json,.csv,.txt" onchange="doImport(this)"></div></div>';
@@ -201,8 +230,8 @@ function viewRec(u,d){var r=RECS[u];if(!r||!r.days[d])return;av={n:nm(u),u:u};md
 function togWO(i){mut(function(s){s.wo=s.wo||[];var k=s.wo.indexOf(i);if(k>=0)s.wo.splice(k,1);else s.wo.push(i)})}
 function mut(fn){var s=STAFF.find(function(x){return x.id===sel});if(s){fn(s,STAFF);saveStaff(s)}renderAdmin()}
 function addStaff(){var n=g("ns_n").trim(),u=slug(g("ns_u")||n),pin=g("ns_p").trim()||"1234";if(!n||!u){alert("Enter a name");return}if(pin.length<4){alert("PIN must be at least 4 characters");return}if(u==="admin"||u===ADMIN_ID||STAFF.some(function(x){return x.id===u})){alert("Username already used");return}
- makeLogin(u,pin).then(function(uid){var s={id:u,name:n,desig:g("ns_d").trim(),wo:[],uid:uid,points:document.getElementById("ns_def").checked?SAMPLE["Production Supervisor"].slice():[]};STAFF.push(s);sel=u;return saveStaff(s)}).then(function(){renderAdmin()}).catch(function(e){alert("Could not add staff: "+(e.code||e.message))})}
-function setPin(){var p=g("npin").trim();if(p.length<4){alert("PIN must be at least 4 characters");return}makeLogin(sel,p).then(function(uid){var s=STAFF.find(function(x){return x.id===sel});s.uid=uid;saveStaff(s);alert("PIN updated for "+s.name)}).catch(function(e){alert("Could not set PIN: "+(e.code||e.message))})}
+ makeLogin(u,pin).then(function(uid){FB.set("uids/"+uid,{id:u});var s={id:u,name:n,desig:g("ns_d").trim(),wo:[],uid:uid,points:document.getElementById("ns_def").checked?SAMPLE["Production Supervisor"].slice():[]};STAFF.push(s);sel=u;return saveStaff(s)}).then(function(){renderAdmin()}).catch(function(e){alert("Could not add staff: "+(e.code||e.message))})}
+function setPin(){var p=g("npin").trim();if(p.length<4){alert("PIN must be at least 4 characters");return}makeLogin(sel,p).then(function(uid){FB.set("uids/"+uid,{id:sel});var s=STAFF.find(function(x){return x.id===sel});s.uid=uid;saveStaff(s);alert("PIN updated for "+s.name)}).catch(function(e){alert("Could not set PIN: "+(e.code||e.message))})}
 function edS(f,v){mut(function(s){v=v.trim();if(v||f==="desig")s[f]=v})}
 function addPt(){var v=g("np").trim();if(v)mut(function(s){s.points.push(v)})}
 function bulk(){var L=g("bk").split(/\r?\n/).map(function(x){return x.trim()}).filter(Boolean);if(L.length)mut(function(s){s.points=s.points.concat(L)})}
@@ -210,7 +239,7 @@ function editPt(i,v){mut(function(s){v=v.trim();if(v)s.points[i]=v;else s.points
 function mvPt(i,d){mut(function(s){var j=i+d,p=s.points;if(j>=0&&j<p.length){var t=p[i];p[i]=p[j];p[j]=t}})}
 function delPt(i){mut(function(s){s.points.splice(i,1)})}
 function cpPts(){var f=g("cp");mut(function(s,ss){var o=f==="__def"?{name:"Default",points:SAMPLE["Production Supervisor"]}:ss.find(function(x){return x.id===f});if(o&&confirm("Replace this checklist with "+o.name+"'s points?"))s.points=o.points.slice()})}
-function delStaff(){if(!confirm("Delete this staff member and their login? Past records stay saved."))return;var id=sel;FB.del("staff/"+id);FB.del("logins/"+id);STAFF=STAFF.filter(function(x){return x.id!==id});sel=null;renderAdmin()}
+function delStaff(){if(!confirm("Delete this staff member and their login? Past records stay saved."))return;var id=sel;FB.del("staff/"+id);FB.del("logins/"+id);var ds=STAFF.find(function(x){return x.id===id});if(ds&&ds.uid)FB.del("uids/"+ds.uid);STAFF=STAFF.filter(function(x){return x.id!==id});syncDir();sel=null;renderAdmin()}
 FB.onUser(onUser);
 </script></div><script>if("serviceWorker"in navigator&&location.protocol.indexOf("http")===0){navigator.serviceWorker.register("sw.js").catch(function(){})}</script>
 </body></html>
